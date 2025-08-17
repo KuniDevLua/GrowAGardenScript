@@ -1,183 +1,295 @@
--- KUNI MABANGIS ON TOP
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local player = Players.LocalPlayer
 
-local espEnabled = true
-local truePetMap = {}
+local LP = Players.LocalPlayer
+local PG = LP:WaitForChild("PlayerGui")
 
-local petTable = {
-    ["Common Egg"] = { "Dog", "Bunny", "Golden Lab" },
-    ["Uncommon Egg"] = { "Chicken", "Black Bunny", "Cat", "Deer" },
-    ["Rare Egg"] = { "Pig", "Monkey", "Rooster", "Orange Tabby", "Spotted Deer" },
-    ["Legendary Egg"] = { "Cow", "Polar Bear", "Sea Otter", "Turtle", "Silver Monkey" },
-    ["Mythical Egg"] = { "Grey Mouse", "Brown Mouse", "Squirrel", "Red Fox", "Red Giant Ant" },
-    ["Bug Egg"] = { "Snail", "Caterpillar", "Giant Ant", "Praying Mantis", "Dragonfly" },
-    ["Bee Egg"] = { "Bee", "Honey Bee", "Bear Bee", "Petal Bee" },
-    ["Anti Bee Egg"] = { "Wasp", "Tarantula Hawk", "Moth", "Butterfly", "Disco Bee" },
-    ["Common Summer Egg"] = { "Starfish", "Seagull", "Crab" },
-    ["Rare Summer Egg"] = { "Sea Turtle", "Flamingo", "Toucan", "Seal", "Orangutan" },
-    ["Oasis Egg"] = { "Meerkat", "Sand Snake", "Axolotl" },
-    ["Paradise Egg"] = { "Ostrich", "Peacock", "Capybara", "Mimic Octopus" },
-    ["Dinosaur Egg"] = { "Raptor", "Triceratops", "Stegosaurus", "T-Rex", "Pterodactyl", "Brontosaurus" },
-    ["Primal Egg"] = { "Spinosaurus", "Ankylosaurus", "Dilophosaurus", "Parasaurolophus", "Iguanodon" },
-    ["Night Egg"] = { "Frog", "Hedgehog", "Mole", "Echo Frog", "Night Owl" },
-    ["Zen Egg"] = { "Shiba Inu", "Nihonzaru", "Tanuki", "Tanchozuru", "Kappa", "Kitsune" },
-    ["Gourmet Egg"] = { "Bagel Bunny", "Pancake Mole", "Sushi Bear", "Spaghetti Sloth", "French Fry Ferret" }
-}
+-- Destroy old GUI if exists
+local old = PG:FindFirstChild("PixiemoGUI")
+if old then old:Destroy() end
 
-local function applyESP(model, petName)
-    if model:FindFirstChild("PetBillboard") then model.PetBillboard:Destroy() end
-    if model:FindFirstChild("ESPHighlight") then model.ESPHighlight:Destroy() end
-    if not espEnabled then return end
-    local base = model:FindFirstChildWhichIsA("BasePart") or model.PrimaryPart
-    if not base then return end
-    local billboard = Instance.new("BillboardGui", base)
-    billboard.Name="PetBillboard"
-    billboard.Size=UDim2.new(0,250,0,40)
-    billboard.AlwaysOnTop=true
-    billboard.StudsOffset=Vector3.new(0,4.5,0)
-    local label=Instance.new("TextLabel",billboard)
-    label.Size=UDim2.new(1,0,1,0)
-    label.BackgroundTransparency=1
-    label.Text=model.Name.." | "..petName
-    label.TextScaled=true
-    label.Font=Enum.Font.FredokaOne
-    label.TextStrokeTransparency=0.3
-    label.TextColor3=Color3.new(1,1,1)
-    local highlight=Instance.new("Highlight",model)
-    highlight.Name="ESPHighlight"
-    highlight.FillColor=Color3.fromRGB(255,200,0)
-    highlight.OutlineColor=Color3.fromRGB(255,255,255)
-    highlight.FillTransparency=0.7
-    highlight.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop
-    highlight.Adornee=model
+-- Tween hover helper
+local function tweenHover(ui, baseSize)
+	if not ui or not ui:IsA("GuiObject") then return end
+	ui.MouseEnter:Connect(function()
+		TweenService:Create(ui, TweenInfo.new(0.12, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+			Size = baseSize + UDim2.fromOffset(6,4)
+		}):Play()
+	end)
+	ui.MouseLeave:Connect(function()
+		TweenService:Create(ui, TweenInfo.new(0.12, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+			Size = baseSize
+		}):Play()
+	end)
 end
 
-local function removeESP(model)
-    if model:FindFirstChild("PetBillboard") then model.PetBillboard:Destroy() end
-    if model:FindFirstChild("ESPHighlight") then model.ESPHighlight:Destroy() end
+-- Create GUI root
+local gui = Instance.new("ScreenGui")
+gui.Name = "PixiemoGUI"
+gui.IgnoreGuiInset = true
+gui.ResetOnSpawn = false
+gui.Parent = PG
+
+-- Minimized pill button
+local pill = Instance.new("TextButton")
+pill.Name = "PixiemoPill"
+pill.Text = "Pixiemo Hub"
+pill.Size = UDim2.fromOffset(160, 32)
+pill.Position = UDim2.new(1, -170, 0, 12)
+pill.BackgroundColor3 = Color3.fromRGB(134,185,112)
+pill.TextColor3 = Color3.new(1,1,1)
+pill.TextSize = 18
+pill.Visible = false
+pill.Parent = gui
+do
+	local uc = Instance.new("UICorner"); uc.CornerRadius = UDim.new(1,0); uc.Parent = pill
+	local st = Instance.new("UIStroke"); st.Color = Color3.fromRGB(80,110,70); st.Thickness=2; st.Parent = pill
 end
 
-local function getNearbyEggs(radius)
-    local eggs = {}
-    local root = (player.Character or player.CharacterAdded:Wait()):WaitForChild("HumanoidRootPart")
-    for _, obj in pairs(Workspace:GetDescendants()) do
-        if obj:IsA("Model") and petTable[obj.Name] then
-            local base = obj:FindFirstChildWhichIsA("BasePart") or obj.PrimaryPart
-            if base then
-                local dist = (base.Position - root.Position).Magnitude
-                if dist <= radius then
-                    if not truePetMap[obj] then
-                        truePetMap[obj] = petTable[obj.Name][math.random(1,#petTable[obj.Name])]
-                    end
-                    table.insert(eggs, obj)
-                end
-            end
-        end
-    end
-    return eggs
+-- Main window
+local win = Instance.new("Frame")
+win.Size = UDim2.fromOffset(420, 330)
+win.Position = UDim2.new(0.5, 0, 0.5, 0)
+win.AnchorPoint = Vector2.new(0.5, 0.5)
+win.BackgroundColor3 = Color3.fromRGB(195,235,185)
+win.Parent = gui
+do
+	local uc = Instance.new("UICorner"); uc.CornerRadius = UDim.new(0,24); uc.Parent = win
+	local st = Instance.new("UIStroke"); st.Color = Color3.fromRGB(150,190,130); st.Thickness=3; st.Parent = win
 end
 
-local function randomizeEggs()
-    for _, egg in ipairs(getNearbyEggs(60)) do
-        local pets = petTable[egg.Name]
-        local chosen = pets[math.random(1,#pets)]
-        truePetMap[egg] = chosen
-        applyESP(egg, chosen)
-    end
+-- Header (draggable)
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1,0,0,36)
+header.BackgroundColor3 = Color3.fromRGB(134,185,112)
+header.Active = true
+header.Parent = win
+do
+	local uc = Instance.new("UICorner"); uc.CornerRadius = UDim.new(0,24); uc.Parent = header
 end
 
-local function hatchEgg(egg)
-    local petName = truePetMap[egg]
-    if not petName then return end
-
-    local eggPart = egg:FindFirstChildWhichIsA("BasePart") or egg.PrimaryPart
-    if not eggPart then return end
-    local eggPosition = eggPart.Position
-
-    -- Destroy egg model
-    egg:Destroy()
-
-    -- Clone pet model from ReplicatedStorage
-    local petModel
-    if ReplicatedStorage:FindFirstChild("Pets") and ReplicatedStorage.Pets:FindFirstChild(petName) then
-        petModel = ReplicatedStorage.Pets[petName]:Clone()
-    else
-        warn("No pet model found for: "..petName)
-        return
-    end
-
-    petModel.Name = petName
-    petModel.Parent = Workspace
-
-    local petBase = petModel:FindFirstChildWhichIsA("BasePart") or petModel.PrimaryPart
-    if petBase then
-        petModel:SetPrimaryPartCFrame(CFrame.new(eggPosition) * CFrame.new(0, petBase.Size.Y/2, 0))
-    end
-end
-
--- GUI Setup
-local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
-gui.Name = "PetRandomizerGUI"
-
-local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 250, 0, 200)
-frame.Position = UDim2.new(0, 25, 0, 100)
-frame.BackgroundColor3 = Color3.fromRGB(40,40,50)
-Instance.new("UICorner", frame).CornerRadius = UDim.new(0,16)
-
-local title = Instance.new("TextLabel", frame)
-title.Size = UDim2.new(1,0,0,30)
-title.Text = "🎲 Pet Randomizer"
-title.Font = Enum.Font.FredokaOne
-title.TextSize = 20
-title.TextColor3 = Color3.fromRGB(255,250,255)
+local title = Instance.new("TextLabel")
 title.BackgroundTransparency = 1
+title.Size = UDim2.fromScale(1,1)
+title.Text = "  Pixiemo Hub"
+title.TextColor3 = Color3.new(1,1,1)
+title.TextSize = 22
+title.Font = Enum.Font.GothamBold
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = header
 
-local pastelColors = {
-    Color3.fromRGB(255,176,224),
-    Color3.fromRGB(187,222,251),
-    Color3.fromRGB(255,236,179),
-    Color3.fromRGB(200,230,201),
-    Color3.fromRGB(225,190,231)
-}
-local nextColor = 1
-local function createButton(text, yPos)
-    local btn = Instance.new("TextButton", frame)
-    btn.Size = UDim2.new(1, -20, 0, 32)
-    btn.Position = UDim2.new(0, 10, 0, yPos)
-    btn.BackgroundColor3 = pastelColors[nextColor]
-    btn.TextColor3 = Color3.new(1,1,1)
-    btn.Font = Enum.Font.FredokaOne
-    btn.TextSize = 14
-    btn.Text = text
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0,8)
-    nextColor = nextColor + 1
-    if nextColor > #pastelColors then nextColor = 1 end
-    return btn
+local minimize = Instance.new("TextButton")
+minimize.Size = UDim2.fromOffset(22,22)
+minimize.Position = UDim2.new(1, -36, 0.5, -11)
+minimize.BackgroundColor3 = Color3.fromRGB(255,212,59)
+minimize.Text = ""
+minimize.Parent = header
+do
+	local uc = Instance.new("UICorner"); uc.CornerRadius = UDim.new(1,0); uc.Parent = minimize
 end
 
-local randomBtn = createButton("🎲 Randomize Pets", 36)
-randomBtn.MouseButton1Click:Connect(randomizeEggs)
+-- Drag logic
+do
+	local dragging = false
+	local dragStart, startPos
+	header.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = win.Position
+		end
+	end)
+	header.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if not dragging then return end
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			local delta = input.Position - dragStart
+			win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+end
 
-local hatchBtn = createButton("🐣 Hatch Nearby Eggs", 72)
-hatchBtn.MouseButton1Click:Connect(function()
-    for _, egg in pairs(getNearbyEggs(60)) do
-        hatchEgg(egg)
-    end
+-- Minimize behavior
+minimize.MouseButton1Click:Connect(function()
+	local targetPos = UDim2.new(1, -170, 0, 12)
+	TweenService:Create(win, TweenInfo.new(0.22), {
+		Size = UDim2.fromOffset(0,0),
+		Position = UDim2.new(targetPos.X.Scale, targetPos.X.Offset + 80, targetPos.Y.Scale, targetPos.Y.Offset + 16)
+	}):Play()
+	task.delay(0.22, function()
+		win.Visible = false
+		pill.Visible = true
+	end)
 end)
 
-local toggleESPBtn = createButton("🔍 Toggle ESP", 108)
-toggleESPBtn.MouseButton1Click:Connect(function()
-    espEnabled = not espEnabled
-    for _, egg in pairs(getNearbyEggs(60)) do
-        if espEnabled then
-            applyESP(egg, truePetMap[egg])
-        else
-            removeESP(egg)
-        end
-    end
+pill.MouseButton1Click:Connect(function()
+	pill.Visible = false
+	win.Size = UDim2.fromOffset(420,330)
+	win.Position = UDim2.new(0.5,0,0.5,0)
+	win.Visible = true
 end)
+
+-- Body frame
+local body = Instance.new("Frame")
+body.Size = UDim2.new(1, -24, 1, -36 - 24)
+body.Position = UDim2.new(0, 12, 0, 36 + 6)
+body.BackgroundTransparency = 1
+body.Parent = win
+
+-- Status label
+local status = Instance.new("TextLabel")
+status.BackgroundTransparency = 1
+status.Size = UDim2.new(1,0,0,20)
+status.Position = UDim2.new(0,0,1,-20)
+status.Text = "Ready."
+status.TextColor3 = Color3.fromRGB(80,110,70)
+status.TextSize = 14
+status.Font = Enum.Font.Gotham
+status.Parent = win
+
+local function setStatus(txt)
+	status.Text = txt
+	print("[Pixiemo]", txt)
+end
+
+-- Helpers to create buttons and toggles
+local function makeButton(txt, posY)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0, 360, 0, 40)
+	btn.Position = UDim2.new(0.5, -180, 0, posY)
+	btn.BackgroundColor3 = Color3.fromRGB(134,185,112)
+	btn.Text = txt
+	btn.TextColor3 = Color3.new(1,1,1)
+	btn.TextSize = 20
+	btn.Font = Enum.Font.GothamBold
+	btn.Parent = body
+	local uc = Instance.new("UICorner"); uc.CornerRadius = UDim.new(0,10); uc.Parent = btn
+	local st = Instance.new("UIStroke"); st.Color = Color3.fromRGB(80,110,70); st.Thickness=2; st.Parent = btn
+	tweenHover(btn, btn.Size)
+	return btn
+end
+
+local function makeToggleRow(label, posY)
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(0, 360, 0, 40)
+	row.Position = UDim2.new(0.5, -180, 0, posY)
+	row.BackgroundTransparency = 1
+	row.Parent = body
+
+	local tl = Instance.new("TextLabel")
+	tl.Size = UDim2.new(0.7, 0, 1, 0)
+	tl.BackgroundTransparency = 1
+	tl.Font = Enum.Font.GothamBold
+	tl.Text = label
+	tl.TextSize = 20
+	tl.TextColor3 = Color3.fromRGB(80,110,70)
+	tl.TextXAlignment = Enum.TextXAlignment.Left
+	tl.Parent = row
+
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0.25, 0, 0.7, 0)
+	btn.Position = UDim2.new(0.75, 0, 0.15, 0)
+	btn.Text = "OFF"
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 18
+	btn.TextColor3 = Color3.new(1,1,1)
+	btn.BackgroundColor3 = Color3.fromRGB(120,120,120)
+	btn.Parent = row
+
+	local uc = Instance.new("UICorner"); uc.CornerRadius = UDim.new(0,10); uc.Parent = btn
+	tweenHover(btn, btn.Size)
+
+	local on = false
+	local function setState(v)
+		on = v
+		btn.Text = on and "ON" or "OFF"
+		btn.BackgroundColor3 = on and Color3.fromRGB(80,200,120) or Color3.fromRGB(120,120,120)
+	end
+	return row, btn, function() return on end, setState
+end
+
+-- EGG ESP Feature
+local eggRow, eggBtn, eggGet, eggSet = makeToggleRow("🍚 EGG ESP", 10)
+local activeEggs = {} -- [Model] = Highlight
+
+local function isEggModel(inst)
+	return inst:IsA("Model") and inst.Name:lower():find("egg") ~= nil
+end
+
+local function addHighlight(m)
+	if activeEggs[m] then return end
+	local h = Instance.new("Highlight")
+	h.FillColor = Color3.fromRGB(134, 185, 112)
+	h.FillTransparency = 0.7
+	h.OutlineColor = Color3.fromRGB(80,110,70)
+	h.OutlineTransparency = 0
+	h.Parent = m
+	activeEggs[m] = h
+end
+
+local function removeHighlight(m)
+	local h = activeEggs[m]
+	if h then
+		h:Destroy()
+	end
+	activeEggs[m] = nil
+end
+
+local function rescanEggs()
+	for m,h in pairs(activeEggs) do
+		if not m or not m.Parent then
+			removeHighlight(m)
+		end
+	end
+	for _,d in ipairs(Workspace:GetDescendants()) do
+		if isEggModel(d) and eggGet() then
+			addHighlight(d)
+		end
+	end
+end
+
+local descAddedConn
+local function enableEggESP()
+	eggSet(true)
+	setStatus("EGG ESP ACTIVE")
+	rescanEggs()
+	if descAddedConn then descAddedConn:Disconnect() end
+	descAddedConn = Workspace.DescendantAdded:Connect(function(d)
+		if eggGet() and isEggModel(d) then
+			addHighlight(d)
+		end
+	end)
+end
+
+local function disableEggESP()
+	eggSet(false)
+	setStatus("EGG ESP OFF")
+	for m,h in pairs(activeEggs) do
+		removeHighlight(m)
+	end
+	if descAddedConn then
+		descAddedConn:Disconnect()
+		descAddedConn = nil
+	end
+end
+
+eggBtn.MouseButton1Click:Connect(function()
+	if eggGet() then
+		disableEggESP()
+	else
+		enableEggESP()
+	end
+end)
+
+-- Initially status
+setStatus("Ready.")
+
+-- Show window by default
+win.Visible = true
+pill.Visible = false
